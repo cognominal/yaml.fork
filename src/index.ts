@@ -22,6 +22,7 @@ export { Pair } from './nodes/Pair.ts'
 export { Scalar } from './nodes/Scalar.ts'
 export { YAMLMap } from './nodes/YAMLMap.ts'
 export { YAMLSeq } from './nodes/YAMLSeq.ts'
+export { YAMLShiva } from './nodes/YAMLShiva.ts'
 
 export type {
   CreateNodeOptions,

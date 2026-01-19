@@ -52,7 +52,7 @@ export function parseAllDocuments<
     >
   | EmptyStream {
   const { lineCounter, prettyErrors } = parseOptions(options)
-  const parser = new Parser(lineCounter?.addNewLine)
+  const parser = new Parser(lineCounter?.addNewLine, options)
   const composer = new Composer(options)
   const docs = Array.from(composer.compose(parser.parse(source)))
 
@@ -84,7 +84,7 @@ export function parseDocument<
   ? Document.Parsed<Contents, Strict>
   : Document<Contents, Strict> {
   const { lineCounter, prettyErrors } = parseOptions(options)
-  const parser = new Parser(lineCounter?.addNewLine)
+  const parser = new Parser(lineCounter?.addNewLine, options)
   const composer = new Composer(options)
 
   type DocType = Contents extends ParsedNode

@@ -10,6 +10,8 @@ import type { Tags } from './schema/tags.ts'
 import type { CollectionTag, ScalarTag } from './schema/types.ts'
 
 export type ParseOptions = {
+  /** Enable lyaml parsing rules. */
+  lyaml?: boolean
   /**
    * Whether integers should be parsed into BigInt rather than number values.
    *
@@ -71,6 +73,8 @@ export type ParseOptions = {
 }
 
 export type DocumentOptions = {
+  /** Enable lyaml parsing rules. */
+  lyaml?: boolean
   /**
    * @internal
    * Used internally by Composer. If set and includes an explicit version,
@@ -224,6 +228,8 @@ export type ToJSOptions = {
 }
 
 export type ToStringOptions = {
+  /** Enable lyaml stringifying rules. */
+  lyaml?: boolean
   /**
    * Use block quote styles for scalar values where applicable.
    * Set to `false` to disable block quotes completely.

@@ -10,12 +10,14 @@ import type { ToJSContext } from './toJS.ts'
 import { toJS } from './toJS.ts'
 import type { MapLike, YAMLMap } from './YAMLMap.ts'
 import type { YAMLSeq } from './YAMLSeq.ts'
+import type { YAMLShiva } from './YAMLShiva.ts'
 
 export type Node<T = unknown> =
   | Alias
   | Scalar<T>
   | YAMLMap<unknown, T>
   | YAMLSeq<T>
+  | YAMLShiva<unknown, unknown, T>
 
 /** Utility type mapper */
 export type NodeType<T> = T extends
@@ -41,6 +43,7 @@ export type ParsedNode =
   | Scalar.Parsed
   | YAMLMap.Parsed
   | YAMLSeq.Parsed
+  | YAMLShiva.Parsed
 
 /** `[start, value-end, node-end]` */
 export type Range = [number, number, number]

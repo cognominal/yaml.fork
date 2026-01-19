@@ -1,6 +1,7 @@
 import type { ParsedNode } from '../nodes/Node.ts'
 import { Pair } from '../nodes/Pair.ts'
 import { YAMLMap } from '../nodes/YAMLMap.ts'
+import { YAMLShiva } from '../nodes/YAMLShiva.ts'
 import type { BlockMap } from '../parse/cst.ts'
 import type { CollectionTag } from '../schema/types.ts'
 import type { ComposeContext, ComposeNode } from './compose-node.ts'
@@ -21,9 +22,11 @@ export function resolveBlockMap(
 ) {
   const NodeClass = tag?.nodeClass ?? YAMLMap
   const map = new NodeClass(ctx.schema) as YAMLMap<ParsedNode, ParsedNode>
+  const hasSeq = ctx.options.lyaml && bm.seq
 
   if (ctx.atRoot) ctx.atRoot = false
   let offset = bm.offset
+  let lastMapOffset = offset
   let commentEnd: number | null = null
   for (const collItem of bm.items) {
     const { start, key, sep, value } = collItem
@@ -40,15 +43,17 @@ export function resolveBlockMap(
     const implicitKey = !keyProps.found
     if (implicitKey) {
       if (key) {
-        if (key.type === 'block-seq')
-          onError(
-            offset,
-            'BLOCK_AS_IMPLICIT_KEY',
-            'A block sequence may not be used as an implicit map key'
-          )
-        else if ('indent' in key && key.indent !== bm.indent)
+        if (key.type === 'block-seq') {
+          if (!(ctx.options.lyaml && bm.seq === key))
+            onError(
+              offset,
+              'BLOCK_AS_IMPLICIT_KEY',
+              'A block sequence may not be used as an implicit map key'
+            )
+        } else if ('indent' in key && key.indent !== bm.indent)
           onError(offset, 'BAD_INDENT', startColMsg)
       }
+
       if (!keyProps.anchor && !keyProps.tag && !sep) {
         commentEnd = keyProps.end
         if (keyProps.comment) {
@@ -58,11 +63,12 @@ export function resolveBlockMap(
         continue
       }
       if (keyProps.newlineAfterProp || containsNewline(key)) {
-        onError(
-          key ?? start[start.length - 1],
-          'MULTILINE_IMPLICIT_KEY',
-          'Implicit keys need to be on a single line'
-        )
+        if (!(ctx.options.lyaml && key?.type === 'block-seq' && bm.seq === key))
+          onError(
+            key ?? start[start.length - 1],
+            'MULTILINE_IMPLICIT_KEY',
+            'Implicit keys need to be on a single line'
+          )
       }
     } else if (keyProps.found?.indent !== bm.indent) {
       onError(offset, 'BAD_INDENT', startColMsg)
@@ -118,6 +124,7 @@ export function resolveBlockMap(
       const pair = new Pair(keyNode, valueNode)
       if (ctx.options.keepSourceTokens) pair.srcToken = collItem
       map.items.push(pair)
+      lastMapOffset = offset
     } else {
       // key with no value
       if (implicitKey)
@@ -133,11 +140,39 @@ export function resolveBlockMap(
       const pair: Pair<ParsedNode, ParsedNode> = new Pair(keyNode)
       if (ctx.options.keepSourceTokens) pair.srcToken = collItem
       map.items.push(pair)
+      lastMapOffset = offset
     }
   }
 
   if (commentEnd && commentEnd < offset)
     onError(commentEnd, 'IMPOSSIBLE', 'Map comment with trailing content')
+
+  if (hasSeq && bm.seq) {
+    const seqNode = composeNode(
+      ctx,
+      bm.seq,
+      {
+        spaceBefore: false,
+        comment: '',
+        anchor: null,
+        tag: null,
+        newlineAfterProp: null,
+        end: bm.seq.offset
+      },
+      onError
+    ) as YAMLShiva['seq']
+    const seqRange = seqNode.range
+    const shiva = new YAMLShiva(ctx.schema)
+    shiva.items = map.items
+    shiva.seq = seqNode
+    shiva.range = [bm.offset, lastMapOffset, commentEnd ?? lastMapOffset]
+    shiva.seqRange = seqRange
+    shiva.anchor = map.anchor
+    shiva.tag = map.tag
+    if (ctx.options.keepSourceTokens) shiva.srcToken = bm
+    return shiva as YAMLShiva.Parsed
+  }
+
   map.range = [bm.offset, offset, commentEnd ?? offset]
   return map as YAMLMap.Parsed
 }

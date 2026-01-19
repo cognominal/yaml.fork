@@ -97,6 +97,7 @@ export interface BlockMap {
         value?: Token
       }
   >
+  seq?: BlockSequence
 }
 
 export interface BlockSequence {

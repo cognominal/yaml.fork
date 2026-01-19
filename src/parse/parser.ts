@@ -10,6 +10,7 @@ import type {
   DocumentEnd,
   TokenType
 } from './cst.ts'
+import type { ParseOptions } from '../options.ts'
 import { prettyToken, tokenType } from './cst.ts'
 import { lex } from './lexer.ts'
 
@@ -137,6 +138,7 @@ function fixFlowSeqItems(fc: FlowCollection) {
  */
 export class Parser {
   private onNewLine?: (offset: number) => void
+  private lyaml: boolean
 
   /** If true, space and sequence indicators count as indentation */
   private atNewLine = true
@@ -168,8 +170,9 @@ export class Parser {
    * @param onNewLine - If defined, called separately with the start position of
    *   each new line (in `parse()`, including the start of input).
    */
-  constructor(onNewLine?: (offset: number) => void) {
+  constructor(onNewLine?: (offset: number) => void, options?: ParseOptions) {
     this.onNewLine = onNewLine
+    this.lyaml = options?.lyaml === true
   }
 
   /**
@@ -225,6 +228,7 @@ export class Parser {
         case 'seq-item-ind':
           if (this.atNewLine) this.indent += source.length
           break
+
         case 'doc-mode':
         case 'flow-error-end':
           return
@@ -269,22 +273,29 @@ export class Parser {
     }
     switch (top.type) {
       case 'document':
-        return this.document(top)
+        this.document(top)
+        return
       case 'alias':
       case 'scalar':
       case 'single-quoted-scalar':
       case 'double-quoted-scalar':
-        return this.scalar(top)
+        this.scalar(top)
+        return
       case 'block-scalar':
-        return this.blockScalar(top)
+        this.blockScalar(top)
+        return
       case 'block-map':
-        return this.blockMap(top)
+        this.blockMap(top)
+        return
       case 'block-seq':
-        return this.blockSequence(top)
+        this.blockSequence(top)
+        return
       case 'flow-collection':
-        return this.flowCollection(top)
+        this.flowCollection(top)
+        return
       case 'doc-end':
-        return this.documentEnd(top)
+        this.documentEnd(top)
+        return
     }
     /* istanbul ignore next should not happen */
     this.pop()
@@ -326,6 +337,8 @@ export class Parser {
           break
         case 'block-map': {
           const it = top.items[top.items.length - 1]
+          if (this.lyaml && token.type === 'block-seq' && top.seq === token)
+            break
           if (it.value) {
             top.items.push({ start: [], key: token, sep: [] })
             this.onKeyLine = true
@@ -366,7 +379,13 @@ export class Parser {
         (token.type === 'block-map' || token.type === 'block-seq')
       ) {
         const last = token.items[token.items.length - 1]
+        const skipLyaml =
+          this.lyaml &&
+          top.type === 'block-map' &&
+          token.type === 'block-seq' &&
+          top.seq === token
         if (
+          !skipLyaml &&
           last &&
           !last.sep &&
           !last.value &&
@@ -543,6 +562,69 @@ export class Parser {
         atMapIndent &&
         (it.sep || it.explicitKey) &&
         this.type !== 'seq-item-ind'
+      const emptyItem =
+        !('key' in it) && !it.sep && !it.explicitKey && !it.value
+      const lyamlSeqStart =
+        this.lyaml && atMapIndent && this.type === 'seq-item-ind' && emptyItem
+
+      if (lyamlSeqStart) {
+        const start = it.start.concat(this.sourceToken)
+        map.items.pop()
+        const seq: BlockSequence = {
+          type: 'block-seq',
+          offset: this.offset,
+          indent: this.indent,
+          items: [{ start }]
+        }
+        map.seq = seq
+        this.stack.push(seq)
+        this.onKeyLine = false
+        return
+      }
+
+      if (
+        this.lyaml &&
+        this.type === 'seq-item-ind' &&
+        this.indent > map.indent
+      ) {
+        this.tokens.push({
+          type: 'error',
+          offset: this.offset,
+          message: `Unexpected ${this.type} token`,
+          source: this.source
+        })
+
+        this.pop()
+        this.step()
+        return
+      }
+
+      if (this.lyaml && map.seq && atMapIndent) {
+        const message = 'Map entries cannot follow a lyaml sequence section'
+        if (
+          this.type === 'explicit-key-ind' ||
+          this.type === 'map-value-ind' ||
+          this.type === 'alias' ||
+          this.type === 'scalar' ||
+          this.type === 'single-quoted-scalar' ||
+          this.type === 'double-quoted-scalar' ||
+          this.type === 'anchor' ||
+          this.type === 'tag' ||
+          this.type === 'flow-map-start' ||
+          this.type === 'flow-seq-start' ||
+          this.type === 'block-scalar-header'
+        ) {
+          this.tokens.push({
+            type: 'error',
+            offset: this.offset,
+            message,
+            source: this.source
+          })
+          this.pop()
+          this.step()
+          return
+        }
+      }
 
       // For empty nodes, assign newline-separated not indented empty tokens to following node
       let start: SourceToken[] = []
@@ -669,6 +751,7 @@ export class Parser {
         case 'single-quoted-scalar':
         case 'double-quoted-scalar': {
           const fs = this.flowScalar(this.type)
+
           if (atNextItem || it.value) {
             map.items.push({ start, key: fs, sep: [] })
             this.onKeyLine = true
@@ -682,6 +765,31 @@ export class Parser {
         }
 
         default: {
+          if (
+            this.lyaml &&
+            this.type === 'seq-item-ind' &&
+            this.indent > map.indent &&
+            it.sep &&
+            !it.value
+          ) {
+            const seq: BlockSequence = {
+              type: 'block-seq',
+              offset: this.offset,
+              indent: this.indent,
+              items: [{ start: [this.sourceToken] }]
+            }
+            const mapValue: BlockMap = {
+              type: 'block-map',
+              offset: this.offset,
+              indent: this.indent,
+              items: [{ start: [] }],
+              seq
+            }
+            this.stack.push(mapValue)
+            this.stack.push(seq)
+            this.onKeyLine = false
+            return
+          }
           const bv = this.startBlockValue(map)
           if (bv) {
             if (bv.type === 'block-seq') {
@@ -953,16 +1061,19 @@ export class Parser {
         this.pop()
         this.step()
         break
-      case 'newline':
+      case 'newline': {
         this.onKeyLine = false
-      // fallthrough
+        if (token.end) token.end.push(this.sourceToken)
+        else token.end = [this.sourceToken]
+        this.pop()
+        break
+      }
       case 'space':
       case 'comment':
       default:
         // all other values are errors
         if (token.end) token.end.push(this.sourceToken)
         else token.end = [this.sourceToken]
-        if (this.type === 'newline') this.pop()
     }
   }
 }

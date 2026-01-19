@@ -106,6 +106,8 @@ function getTagObject(tags: Array<ScalarTag | CollectionTag>, item: Node) {
   } else {
     obj = item
     tagObj = tags.find(t => t.nodeClass && obj instanceof t.nodeClass)
+    if (!tagObj && isCollection(item))
+      tagObj = tags.find(t => t.collection === 'map')
   }
 
   if (!tagObj) {

@@ -248,6 +248,93 @@ describe('flow collection keys', () => {
   })
 })
 
+describe('lyaml block maps', () => {
+  test('map followed by sequence', () => {
+    const doc = YAML.parseDocument<YAML.YAMLMap, false>(
+      source`
+        h1:
+          id: id
+          class: a b
+          - some
+          - b:
+            - bold
+          - text
+          - |
+            even more text
+      `,
+      { lyaml: true }
+    )
+    expect(doc.errors).toMatchObject([])
+    expect(doc.contents).toMatchObject({
+      items: [
+        {
+          key: { value: 'h1' },
+          value: {
+            items: [
+              { key: { value: 'id' }, value: { value: 'id' } },
+              { key: { value: 'class' }, value: { value: 'a b' } }
+            ],
+            seq: {
+              items: [
+                { value: 'some' },
+                {
+                  items: [
+                    {
+                      key: { value: 'b' },
+                      value: { items: [{ value: 'bold' }] }
+                    }
+                  ]
+                },
+                { value: 'text' },
+                { value: 'even more text\n' }
+              ]
+            }
+          }
+        }
+      ]
+    })
+    expect(String(doc)).toBe(
+      'h1:\n' +
+        '  id: id\n' +
+        '  class: a b\n' +
+        '  - some\n' +
+        '  - b:\n' +
+        '    - bold\n' +
+        '  - text\n' +
+        '  - |\n' +
+        '  even more text\n'
+    )
+  })
+
+  test('map entries after sequence error', () => {
+    const doc = YAML.parseDocument(
+      source`
+        h1:
+          id: id
+          - some
+          class: later
+      `,
+      { lyaml: true }
+    )
+    expect(doc.errors).toMatchObject([
+      { message: /Map entries cannot follow a lyaml sequence section/ },
+      { code: 'BAD_INDENT' }
+    ])
+  })
+
+  test('same indent sequence in normal YAML', () => {
+    const doc = YAML.parseDocument(
+      source`
+        h1:
+          id: id
+          - some
+      `,
+      { lyaml: false }
+    )
+    expect(doc.errors).not.toHaveLength(0)
+  })
+})
+
 test('indented block sequnce with inner block sequence (#38)', () => {
   const src = `
   content:
