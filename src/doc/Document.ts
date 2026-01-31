@@ -16,6 +16,7 @@ import { toJS } from '../nodes/toJS.ts'
 import type { YAMLMap } from '../nodes/YAMLMap.ts'
 import type { YAMLSeq } from '../nodes/YAMLSeq.ts'
 import type {
+  AcornAstOptions,
   CreateNodeOptions,
   DocumentOptions,
   ParseOptions,
@@ -23,6 +24,8 @@ import type {
   ToJSOptions,
   ToStringOptions
 } from '../options.ts'
+import type { AcornProgram } from '../ast/acorn.ts'
+import { toAcorn } from '../ast/acorn.ts'
 import { Schema } from '../schema/Schema.ts'
 import { stringifyDocument } from '../stringify/stringifyDocument.ts'
 import { anchorNames, createNodeAnchors, findNewAnchor } from './anchors.ts'
@@ -69,7 +72,7 @@ export class Document<
   options: Required<
     Omit<
       ParseOptions & DocumentOptions,
-      '_directives' | 'lineCounter' | 'version'
+      '_directives' | 'lineCounter' | 'version' | 'ast'
     >
   >
 
@@ -122,6 +125,7 @@ export class Document<
       {
         intAsBigInt: false,
         keepSourceTokens: false,
+        lyaml: false,
         logLevel: 'warn',
         prettyErrors: true,
         strict: true,
@@ -452,6 +456,15 @@ export class Document<
    */
   toJSON(jsonArg?: string | null, onAnchor?: ToJSOptions['onAnchor']): any {
     return this.toJS({ json: true, jsonArg, mapAsMap: false, onAnchor })
+  }
+
+  /** An Acorn-compatible ESTree AST of the document contents. */
+  toAcorn(
+    options: (AcornAstOptions & ToJSOptions) | ToJSOptions = {}
+  ): AcornProgram {
+    const opt =
+      'format' in options ? options : { ...options, format: 'acorn' as const }
+    return toAcorn(this, opt)
   }
 
   /** A YAML representation of the document. */

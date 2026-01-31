@@ -25,6 +25,7 @@ export { YAMLSeq } from './nodes/YAMLSeq.ts'
 export { YAMLShiva } from './nodes/YAMLShiva.ts'
 
 export type {
+  AcornAstOptions,
   CreateNodeOptions,
   DocumentOptions,
   ParseOptions,
@@ -32,6 +33,8 @@ export type {
   ToJSOptions,
   ToStringOptions
 } from './options.ts'
+
+export type { AcornNode, AcornProgram } from './ast/acorn.ts'
 
 export * as CST from './parse/cst.ts'
 export { lex } from './parse/lexer.ts'

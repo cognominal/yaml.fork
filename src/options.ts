@@ -9,6 +9,12 @@ import type { Schema } from './schema/Schema.ts'
 import type { Tags } from './schema/tags.ts'
 import type { CollectionTag, ScalarTag } from './schema/types.ts'
 
+export type AcornAstOptions = {
+  format: 'acorn'
+  range?: boolean
+  locations?: boolean
+}
+
 export type ParseOptions = {
   /** Enable lyaml parsing rules. */
   lyaml?: boolean
@@ -70,6 +76,13 @@ export type ParseOptions = {
    * Default: `true`
    */
   uniqueKeys?: boolean | ((a: ParsedNode, b: ParsedNode) => boolean)
+
+  /**
+   * Return an Acorn-compatible ESTree AST instead of JS values.
+   *
+   * Default: undefined
+   */
+  ast?: 'acorn' | AcornAstOptions
 }
 
 export type DocumentOptions = {

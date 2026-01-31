@@ -7,6 +7,7 @@ import { warn } from './log.ts'
 import { isDocument } from './nodes/identity.ts'
 import type { Node, ParsedNode } from './nodes/Node.ts'
 import type {
+  AcornAstOptions,
   CreateNodeOptions,
   DocumentOptions,
   ParseOptions,
@@ -14,6 +15,7 @@ import type {
   ToJSOptions,
   ToStringOptions
 } from './options.ts'
+import type { AcornProgram } from './ast/acorn.ts'
 import { LineCounter } from './parse/line-counter.ts'
 import { Parser } from './parse/parser.ts'
 
@@ -29,6 +31,10 @@ function parseOptions(options: ParseOptions) {
   return { lineCounter, prettyErrors }
 }
 
+function normalizeAstOptions(ast: 'acorn' | AcornAstOptions): AcornAstOptions {
+  return ast === 'acorn' ? { format: 'acorn' } : ast
+}
+
 /**
  * Parse the input as a stream of YAML documents.
  *
@@ -38,7 +44,35 @@ function parseOptions(options: ParseOptions) {
  *   EmptyStream and contain additional stream information. In
  *   TypeScript, you should use `'empty' in docs` as a type guard for it.
  */
+export function parseAllDocuments(
+  source: string,
+  options: ParseOptions &
+    DocumentOptions &
+    SchemaOptions & { ast: 'acorn' | AcornAstOptions }
+): AcornProgram[] | EmptyStream
+
 export function parseAllDocuments<
+  Contents extends Node = ParsedNode,
+  Strict extends boolean = true
+>(
+  source: string,
+  options?: ParseOptions & DocumentOptions & SchemaOptions
+):
+  | Array<
+      Contents extends ParsedNode
+        ? Document.Parsed<Contents, Strict>
+        : Document<Contents, Strict>
+    >
+  | EmptyStream
+
+export function parseAllDocuments(
+  source: string,
+  options: ParseOptions & DocumentOptions & SchemaOptions = {}
+): any {
+  return parseAllDocumentsImpl(source, options)
+}
+
+function parseAllDocumentsImpl<
   Contents extends Node = ParsedNode,
   Strict extends boolean = true
 >(
@@ -50,7 +84,8 @@ export function parseAllDocuments<
         ? Document.Parsed<Contents, Strict>
         : Document<Contents, Strict>
     >
-  | EmptyStream {
+  | EmptyStream
+  | AcornProgram[] {
   const { lineCounter, prettyErrors } = parseOptions(options)
   const parser = new Parser(lineCounter?.addNewLine, options)
   const composer = new Composer(options)
@@ -65,7 +100,15 @@ export function parseAllDocuments<
   type DocType = Contents extends ParsedNode
     ? Document.Parsed<Contents, Strict>
     : Document<Contents, Strict>
-  if (docs.length > 0) return docs as DocType[]
+  if (docs.length > 0) {
+    if (options.ast) {
+      const astOptions = normalizeAstOptions(options.ast)
+      return docs.map(doc =>
+        doc.toAcorn(Object.assign({}, options, astOptions))
+      )
+    }
+    return docs as DocType[]
+  }
   return Object.assign<
     DocType[],
     { empty: true },
@@ -136,6 +179,13 @@ export function parse(
 ): any
 export function parse(
   src: string,
+  options: ParseOptions &
+    DocumentOptions &
+    SchemaOptions &
+    ToJSOptions & { ast: 'acorn' | AcornAstOptions }
+): AcornProgram
+export function parse(
+  src: string,
   reviver: Reviver,
   options?: ParseOptions & DocumentOptions & SchemaOptions & ToJSOptions
 ): any
@@ -148,10 +198,16 @@ export function parse(
   options?: ParseOptions & DocumentOptions & SchemaOptions & ToJSOptions
 ): any {
   let _reviver: Reviver | undefined = undefined
+  let astOptions: AcornAstOptions | undefined
   if (typeof reviver === 'function') {
     _reviver = reviver
   } else if (options === undefined && reviver && typeof reviver === 'object') {
     options = reviver
+  }
+  if (options?.ast) {
+    if (_reviver)
+      throw new TypeError('reviver is not supported with ast output')
+    astOptions = normalizeAstOptions(options.ast)
   }
 
   const doc = parseDocument(src, options)
@@ -161,6 +217,7 @@ export function parse(
     if (doc.options.logLevel !== 'silent') throw doc.errors[0]
     else doc.errors = []
   }
+  if (astOptions) return doc.toAcorn(Object.assign({}, options, astOptions))
   return doc.toJS(Object.assign({ reviver: _reviver }, options))
 }
 
